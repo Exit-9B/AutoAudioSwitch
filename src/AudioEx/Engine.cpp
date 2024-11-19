@@ -17,125 +17,158 @@ struct WAIT
 
 namespace AudioEx
 {
-	static void ClearSounds()
+	[[nodiscard]] static RE::IXAudio2SourceVoice* GetCompatableSourceVoice(
+		RE::BSXAudio2Audio* a_audioImpl,
+		const RE::WAVEFORMATEX* a_format,
+		const RE::BSTSmallArray<RE::BSAudioMonitor::Request, 2>& a_sends,
+		RE::IXAudio2VoiceCallback* a_callback,
+		bool a_isMusic)
+	{
+		using func_t = decltype(&GetCompatableSourceVoice);
+		REL::Relocation<func_t> func{ STATIC_OFFSET(BSXAudio2Audio::GetCompatableSourceVoice) };
+		return func(a_audioImpl, a_format, a_sends, a_callback, a_isMusic);
+	}
+
+	static void KillGameSounds()
 	{
 		const auto audioManager = RE::BSAudioManager::GetSingleton();
 		const auto audio = RE::BSAudioManager::QPlatformInstance();
 
-		audioManager->KillAll();
-		for (const auto& [soundID, gameSound] : audioManager->activeSounds) {
-			audio->ReleaseGameSound(gameSound);
-		}
-		audioManager->activeSounds.clear();
+		if (const auto audioImpl = skyrim_cast<RE::BSXAudio2Audio*>(audio)) {
+			for (auto& [soundID, gameSound] : audioManager->activeSounds) {
+				const auto xaudioGameSound = static_cast<RE::BSXAudio2GameSound*>(gameSound);
 
-		for (const auto& [soundID, soundInfo] : audioManager->stateMap) {
-			delete soundInfo;
+				if (xaudioGameSound->sourceVoice) {
+					RE::XAUDIO2_VOICE_STATE voiceState{};
+					xaudioGameSound->sourceVoice->GetState(std::addressof(voiceState));
+					xaudioGameSound->samplesPlayed =
+						static_cast<std::uint32_t>(voiceState.SamplesPlayed);
+
+					std::exchange(xaudioGameSound->sourceVoice, nullptr)->DestroyVoice();
+				}
+
+				xaudioGameSound->buffersQueued = 0;
+				xaudioGameSound->lastUpdateTime = std::numeric_limits<std::uint32_t>::max();
+			}
 		}
-		audioManager->stateMap.clear();
-		audioManager->movingSounds.clear();
-		audioManager->objectOutputOverrides.clear();
+		else {
+			for (const auto& [soundID, gameSound] : audioManager->activeSounds) {
+				audio->ReleaseGameSound(gameSound);
+			}
+			audioManager->activeSounds.clear();
+
+			for (const auto& [soundID, soundInfo] : audioManager->stateMap) {
+				delete soundInfo;
+			}
+			audioManager->stateMap.clear();
+		}
 
 		audioManager->ClearCache();
 	}
 
-	static void KillAudioMonitors()
+	static void
+	ReviveGameSound(RE::BSXAudio2Audio* a_audioImpl, RE::BSXAudio2GameSound* a_gameSound)
 	{
-		auto& bInitialized =
-			*REL::Relocation<bool*>(STATIC_OFFSET(BGSAudioMonitors::bInitialized));
-		if (!bInitialized) {
+		if (!a_gameSound->src) {
 			return;
 		}
 
-		const auto audio = RE::BSAudioManager::QPlatformInstance();
+		const std::uint32_t srcChannels = a_gameSound->src->format.nChannels;
+		const std::uint32_t dstChannels = a_audioImpl->speakerChannels;
 
-		const auto& uiSmallRumbleMonitorID = *REL::Relocation<std::uint32_t*>(
-			STATIC_OFFSET(BGSAudioMonitors::uiSmallRumbleMonitorID));
-		const auto& uiBigRumbleMonitorID = *REL::Relocation<std::uint32_t*>(
-			STATIC_OFFSET(BGSAudioMonitors::uiBigRumbleMonitorID));
+		a_gameSound->dspSettings.SrcChannelCount = srcChannels;
+		a_gameSound->dspSettings.DstChannelCount = dstChannels;
 
-		audio->ReleaseMonitor(uiSmallRumbleMonitorID);
-		audio->ReleaseMonitor(uiBigRumbleMonitorID);
+		RE::free(std::exchange(
+			a_gameSound->dspSettings.pMatrixCoefficients,
+			RE::calloc<float>(static_cast<size_t>(srcChannels) * dstChannels)));
 
-		const auto& NoMonitor = *REL::Relocation<RE::BSAudioMonitor::Receiver*>(
-			STATIC_OFFSET(BSAudioMonitor::Receiver::NoMonitor));
+		a_gameSound->emitter.ChannelCount = a_gameSound->dspSettings.SrcChannelCount;
 
-		auto& smallAmp = *REL::Relocation<RE::BSAudioMonitor::Receiver*>(
-			STATIC_OFFSET(BGSAudioMonitors::smallAmp));
-		smallAmp = NoMonitor;
+		a_gameSound->sourceVoice = GetCompatableSourceVoice(
+			a_audioImpl,
+			std::addressof(a_gameSound->src->format),
+			a_gameSound->requests,
+			a_gameSound,
+			a_gameSound->IsMusic());
 
-		auto& bigAmp = *REL::Relocation<RE::BSAudioMonitor::Receiver*>(
-			STATIC_OFFSET(BGSAudioMonitors::bigAmp));
-		bigAmp = NoMonitor;
+		a_gameSound->OutputModelChangedImpl();
+		a_gameSound->SetVolumeImpl();
 
-		bInitialized = false;
+		a_gameSound->playbackPosition += std::exchange(a_gameSound->samplesPlayed, 0);
+
+		if (a_gameSound->IsPlaying()) {
+			a_gameSound->SeekInSamples(a_gameSound->playbackPosition);
+		}
 	}
 
-	static void InitAudioMonitors()
+	static void KillAudioMonitors()
 	{
-		const auto audio = RE::BSAudioManager::QPlatformInstance();
+		auto& monitorLock =
+			*REL::Relocation<RE::BSSpinLock*>(STATIC_OFFSET(BSXAudio2Audio::MonitorLock));
 
-		auto& uiSmallRumbleMonitorID = *REL::Relocation<std::uint32_t*>(
-			STATIC_OFFSET(BGSAudioMonitors::uiSmallRumbleMonitorID));
-		auto& uiBigRumbleMonitorID = *REL::Relocation<std::uint32_t*>(
-			STATIC_OFFSET(BGSAudioMonitors::uiBigRumbleMonitorID));
-
-		uiSmallRumbleMonitorID = audio->CreateMonitor();
-		uiBigRumbleMonitorID = audio->CreateMonitor();
-
-		*REL::Relocation<RE::BSAudioMonitor::Receiver*>(STATIC_OFFSET(
-			BGSAudioMonitors::smallAmp)) = audio->GetReceiver(uiSmallRumbleMonitorID);
-		*REL::Relocation<RE::BSAudioMonitor::Receiver*>(STATIC_OFFSET(BGSAudioMonitors::bigAmp)) =
-			audio->GetReceiver(uiBigRumbleMonitorID);
-
-		auto& bInitialized =
-			*REL::Relocation<bool*>(STATIC_OFFSET(BGSAudioMonitors::bInitialized));
-		bInitialized = true;
-	}
-
-	static void ClearMonitors()
-	{
 		auto& activeMonitors = *REL::Relocation<RE::BSTSmallArray<RE::XAudio2Monitor, 8>*>(
 			STATIC_OFFSET(BSXAudio2Audio::ActiveMonitorsA));
 		auto& inactiveMonitors = *REL::Relocation<RE::BSTSmallArray<RE::XAudio2Monitor, 8>*>(
 			STATIC_OFFSET(BSXAudio2Audio::InactiveMonitorsA));
 
-		auto& monitorLock =
-			*REL::Relocation<RE::BSSpinLock*>(STATIC_OFFSET(BSXAudio2Audio::MonitorLock));
-
 		RE::BSSpinLockGuard locker{ monitorLock };
+
 		for (auto& monitor : activeMonitors) {
 			if (monitor.submixVoice) {
-				monitor.submixVoice->DestroyVoice();
+				std::exchange(monitor.submixVoice, nullptr)->DestroyVoice();
 			}
-			if (monitor.monitorAPO) {
-				logger::warn(
-					"Monitor {} is still active, forcing release"sv,
-					std::distance(activeMonitors.data(), std::addressof(monitor)));
-				delete monitor.monitorAPO;
-			}
-			monitor = { nullptr, nullptr };
 		}
-		activeMonitors.clear();
 
 		for (auto& monitor : inactiveMonitors) {
 			if (monitor.submixVoice) {
-				monitor.submixVoice->DestroyVoice();
+				std::exchange(monitor.submixVoice, nullptr)->DestroyVoice();
 			}
 			if (monitor.monitorAPO) {
-				delete monitor.monitorAPO;
+				delete std::exchange(monitor.monitorAPO, nullptr);
 			}
-			monitor = { nullptr, nullptr };
 		}
 		inactiveMonitors.clear();
 	}
 
-	static void Shutdown(RE::BSXAudio2Audio* a_audio)
+	static void ReviveAudioMonitors(RE::BSXAudio2Audio* a_audioImpl)
+	{
+		auto& monitorLock =
+			*REL::Relocation<RE::BSSpinLock*>(STATIC_OFFSET(BSXAudio2Audio::MonitorLock));
+
+		auto& activeMonitors = *REL::Relocation<RE::BSTSmallArray<RE::XAudio2Monitor, 8>*>(
+			STATIC_OFFSET(BSXAudio2Audio::ActiveMonitorsA));
+
+		RE::BSSpinLockGuard locker{ monitorLock };
+
+		for (auto& monitor : activeMonitors) {
+			RE::XAUDIO2_EFFECT_DESCRIPTOR effectDescriptor{
+				.pEffect = monitor.monitorAPO,
+				.InitialState = 1,
+				.OutputChannels = 2,
+			};
+
+			const RE::XAUDIO2_EFFECT_CHAIN effectChain{
+				.EffectCount = 1,
+				.pEffectDescriptors = std::addressof(effectDescriptor),
+			};
+
+			a_audioImpl->XAudio->CreateSubmixVoice(
+				std::addressof(monitor.submixVoice),
+				2,
+				a_audioImpl->outputFormat.Format.nSamplesPerSec,
+				0,
+				std::numeric_limits<std::uint32_t>::max(),
+				nullptr,
+				std::addressof(effectChain));
+		}
+	}
+
+	static void KillEngine(RE::BSXAudio2Audio* a_audio)
 	{
 		if (a_audio->XAudio) {
 			a_audio->XAudio->StopEngine();
 		}
-
-		ClearMonitors();
 
 		auto& reverbModVoice = *REL::Relocation<RE::IXAudio2SubmixVoice**>(
 			STATIC_OFFSET(BSXAudio2Audio::pReverbModVoice));
@@ -146,31 +179,27 @@ namespace AudioEx
 					STATIC_OFFSET(BSXAudio2Audio::ReverbModCallback::Instance))
 					.get());
 
-			reverbModVoice->DestroyVoice();
-			reverbModVoice = nullptr;
+			std::exchange(reverbModVoice, nullptr)->DestroyVoice();
 		}
 
 		if (a_audio->masteringVoice) {
-			a_audio->masteringVoice->DestroyVoice();
-			a_audio->masteringVoice = nullptr;
+			std::exchange(a_audio->masteringVoice, nullptr)->DestroyVoice();
 		}
 
 		if (a_audio->XAudio) {
-			a_audio->XAudio->Release();
-			a_audio->XAudio = nullptr;
+			std::exchange(a_audio->XAudio, nullptr)->Release();
 		}
 
 		if (a_audio->audioListener) {
-			delete a_audio->audioListener;
-			a_audio->audioListener = nullptr;
+			delete std::exchange(a_audio->audioListener, nullptr);
 		}
 	}
 
 	void Engine::SetSilentMode(RE::BSXAudio2Audio* a_audio)
 	{
-		ClearSounds();
+		KillGameSounds();
 		KillAudioMonitors();
-		Shutdown(a_audio);
+		KillEngine(a_audio);
 	}
 
 	void Engine::Reset(RE::BSAudioManager* a_audioManager)
@@ -188,8 +217,14 @@ namespace AudioEx
 			a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitFailed);
 
 			if (audioImpl->Init(&a_audioManager->initSettings.wnd)) {
+				audioImpl->XAudio->StartEngine();
 				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitialized);
-				InitAudioMonitors();
+
+				ReviveAudioMonitors(audioImpl);
+
+				for (auto& [soundID, gameSound] : a_audioManager->activeSounds) {
+					ReviveGameSound(audioImpl, static_cast<RE::BSXAudio2GameSound*>(gameSound));
+				}
 			}
 			else {
 				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitFailed);

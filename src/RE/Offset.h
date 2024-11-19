@@ -31,17 +31,17 @@ namespace RE
 			constexpr auto uiNextID = REL::ID(410106);
 		}
 
+		namespace BSAudioManagerThread
+		{
+			constexpr auto ThreadProc = REL::ID(67746);
+		}
+
 		namespace BSAudioMonitor
 		{
 			namespace Receiver
 			{
 				constexpr auto NoMonitor = REL::ID(388361);
 			}
-		}
-
-		namespace BSAudioManagerThread
-		{
-			constexpr auto ThreadProc = REL::ID(67746);
 		}
 
 		namespace BSXAudio2Audio
@@ -53,6 +53,7 @@ namespace RE
 
 			constexpr auto ActiveMonitorsA = REL::ID(388390);
 			constexpr auto InactiveMonitorsA = REL::ID(388393);
+			constexpr auto GetCompatableSourceVoice = REL::ID(67955);
 			constexpr auto MonitorLock = REL::ID(410144);
 			constexpr auto XAudio2Name = REL::ID(410143);
 			constexpr auto hXAudio2Dll = REL::ID(410138);
@@ -65,11 +66,6 @@ namespace RE
 		namespace Journal_SystemTab
 		{
 			constexpr auto ProcessCallbacks = REL::ID(53306);
-		}
-
-		namespace Main
-		{
-			constexpr auto StartUp = REL::ID(36547);
 		}
 
 		constexpr auto WinMain = REL::ID(36544);

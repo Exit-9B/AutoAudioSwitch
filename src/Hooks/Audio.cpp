@@ -137,8 +137,8 @@ namespace Hooks
 	{
 		if (SKSE::WinAPI::GetCurrentThreadID() == a_audioManager->ownerThreadID) {
 			if (AudioEx::Engine::retryAudio) {
-				AudioEx::Engine::retryAudio = false;
 				AudioEx::Engine::Reset(a_audioManager);
+				AudioEx::Engine::retryAudio = false;
 				return;
 			}
 			else {
@@ -148,6 +148,9 @@ namespace Hooks
 				}
 			}
 		}
-		_originalFunc(a_audioManager);
+
+		if (!AudioEx::Engine::retryAudio) {
+			_originalFunc(a_audioManager);
+		}
 	}
 }
