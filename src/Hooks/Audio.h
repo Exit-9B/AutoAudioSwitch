@@ -14,7 +14,6 @@ namespace Hooks
 	{
 	public:
 		static void Install();
-		inline static constinit RE::XAUDIO2_DEVICE_DETAILS currentDevice;
 
 	private:
 		struct StartUpHook

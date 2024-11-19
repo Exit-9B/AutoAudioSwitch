@@ -53,12 +53,12 @@ namespace RE
 
 			constexpr auto ActiveMonitorsA = REL::ID(388390);
 			constexpr auto InactiveMonitorsA = REL::ID(388393);
-			constexpr auto GetCompatableSourceVoice = REL::ID(67955);
 			constexpr auto MonitorLock = REL::ID(410144);
 			constexpr auto XAudio2Name = REL::ID(410143);
 			constexpr auto hXAudio2Dll = REL::ID(410138);
 			constexpr auto pReverbModVoice = REL::ID(410140);
 
+			constexpr auto GetCompatableSourceVoice = REL::ID(67955);
 			constexpr auto Init = REL::ID(67952);
 			constexpr auto Vtbl = REL::ID(236527);
 		}

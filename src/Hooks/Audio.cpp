@@ -3,6 +3,7 @@
 #include "AudioEx/DeviceWatcher.h"
 #include "AudioEx/Engine.h"
 #include "AudioEx/EngineCallback.h"
+#include "AudioEx/Prefs.h"
 #include "RE/Offset.h"
 
 namespace Hooks
@@ -83,11 +84,27 @@ namespace Hooks
 		a_xaudio->GetDeviceCount(&deviceCount);
 		logger::debug("{} audio devices available"sv, deviceCount);
 
-		a_xaudio->GetDeviceDetails(a_deviceIndex, &currentDevice);
+		if (AudioEx::Prefs::PreferredDevice) {
+			for (const auto i : std::views::iota(0u, deviceCount)) {
+				RE::XAUDIO2_DEVICE_DETAILS details{};
+				a_xaudio->GetDeviceDetails(i, std::addressof(details));
+				if (::wcsncmp(AudioEx::Prefs::PreferredDevice->c_str(), details.DeviceID, 256) ==
+					0) {
+
+					logger::trace("Overriding device selection with user preference"sv);
+					a_deviceIndex = i;
+					break;
+				}
+			}
+		}
+
+		RE::XAUDIO2_DEVICE_DETAILS details{};
+		a_xaudio->GetDeviceDetails(a_deviceIndex, std::addressof(AudioEx::Engine::CurrentDevice));
+		const wchar_t* const displayName = AudioEx::Engine::CurrentDevice.DisplayName;
 		logger::info(
 			"Using device at index {}: {}"sv,
 			a_deviceIndex,
-			SKSE::stl::utf16_to_utf8(currentDevice.DisplayName)
+			SKSE::stl::utf16_to_utf8(std::wstring_view(displayName, ::wcsnlen(displayName, 256)))
 				.value_or("<error reading string>"s));
 
 		return _originalFunc(
@@ -118,7 +135,7 @@ namespace Hooks
 			}
 		}
 		else {
-			logger::debug("BSXAudio2Audio init failed"sv);
+			logger::warn("BSXAudio2Audio init failed"sv);
 		}
 
 		return result;

@@ -1,1 +1,2 @@
+$Auto	Auto
 $Output Device	Output Device

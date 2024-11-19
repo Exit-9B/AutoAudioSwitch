@@ -1,5 +1,6 @@
 #include "AudioEx/DeviceWatcher.h"
 #include "AudioEx/EngineCallback.h"
+#include "AudioEx/Prefs.h"
 #include "Hooks/Audio.h"
 #include "Hooks/Options.h"
 #include "Hooks/Scaleform.h"
@@ -81,11 +82,11 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	logger::info("{} v{}"sv, Plugin::NAME, Plugin::VERSION.string());
 
 	SKSE::Init(a_skse);
-	SKSE::AllocTrampoline(58);
+	SKSE::AllocTrampoline(72);
+
+	AudioEx::Prefs::Load();
 
 	Hooks::Audio::Install();
-// TODO: implement device options
-#if 0
 	Hooks::Options::Install();
 
 	SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* a_msg)
@@ -100,7 +101,6 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 			break;
 		}
 	});
-#endif
 
 	return true;
 }

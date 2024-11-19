@@ -36,7 +36,7 @@ namespace AudioEx
 
 	void EngineCallback::OnCriticalError([[maybe_unused]] std::int32_t a_error)
 	{
-		logger::debug(
+		logger::info(
 			"XAudio2 encountered critical error ({:08X})",
 			static_cast<std::uint32_t>(a_error));
 

@@ -216,6 +216,7 @@ namespace AudioEx
 			a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitialized);
 			a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitFailed);
 
+			logger::trace("Reinitializing XAudio2..."sv);
 			if (audioImpl->Init(&a_audioManager->initSettings.wnd)) {
 				audioImpl->XAudio->StartEngine();
 				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitialized);

@@ -26,17 +26,23 @@ SKSEPlugin_Add(
 		src/common/PCH.h
 )
 
-set_target_properties(CommonLibSSE PROPERTIES
-    FOLDER External
+find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h")
+
+target_include_directories(
+	${PROJECT_NAME}
+	PRIVATE
+		${SIMPLEINI_INCLUDE_DIRS}
 )
 
-if(FALSE)
+set_target_properties(CommonLibSSE PROPERTIES
+	FOLDER External
+)
+
 install(
 	FILES
 		"${PROJECT_SOURCE_DIR}/data/Interface/Translations/${PROJECT_NAME}_ENGLISH.txt"
 	DESTINATION "Interface/Translations"
 )
-endif()
 
 set(CPACK_GENERATOR "7Z")
 set(CPACK_PACKAGE_FILE_NAME ${PROJECT_NAME}-${PROJECT_VERSION})
