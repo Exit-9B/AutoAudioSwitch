@@ -57,6 +57,9 @@ namespace Hooks
 		}
 
 		auto hook = REL::Relocation<std::uintptr_t>(RE::Offset::MoviePlayer::Initialize, 0x4);
+		REL::make_pattern<"48 8B 0D">().match_or_fail(hook.address());
+
+		REL::safe_fill(hook.address(), REL::NOP, 0x10);
 		util::write_14branch(hook.address(), &AudioEx::Bink::SetSoundSystem);
 	}
 
