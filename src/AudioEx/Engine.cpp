@@ -45,8 +45,6 @@ namespace AudioEx
 					xaudioGameSound->samplesPlayed =
 						static_cast<std::uint32_t>(voiceState.SamplesPlayed);
 
-					xaudioGameSound->sourceVoice->Stop();
-					xaudioGameSound->sourceVoice->FlushSourceBuffers();
 					std::exchange(xaudioGameSound->sourceVoice, nullptr)->DestroyVoice();
 				}
 
