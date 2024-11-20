@@ -65,16 +65,47 @@ namespace util
 	};
 	static_assert(sizeof(ModRM) == 0x1);
 
-	template <Reg R64>
+	template <std::convertible_to<const void*> F>
+	inline void write_14branch(std::uintptr_t a_src, F&& a_dst)
+	{
+#pragma pack(push, 1)
+		// FF /4
+		// JMP r/m64
+		struct Assembly
+		{
+			// jmp [rip]
+			std::uint8_t  jmp;    // 0 - 0xFF
+			std::uint8_t  modrm;  // 1 - 0x25
+			std::int32_t  disp;   // 2 - 0x00000000
+			std::uint64_t addr;   // 6 - [rip]
+		};
+		static_assert(offsetof(Assembly, jmp) == 0x0);
+		static_assert(offsetof(Assembly, modrm) == 0x1);
+		static_assert(offsetof(Assembly, disp) == 0x2);
+		static_assert(offsetof(Assembly, addr) == 0x6);
+		static_assert(sizeof(Assembly) == 0xE);
+#pragma pack(pop)
+
+		const Assembly assembly{
+			.jmp = static_cast<std::uint8_t>(0xFF),
+			.modrm = static_cast<std::uint8_t>(0x25),
+			.disp = static_cast<std::int32_t>(0),
+			.addr = static_cast<std::uint64_t>(unrestricted_cast<std::uintptr_t>(a_dst)),
+		};
+
+		REL::safe_write(a_src, std::addressof(assembly), sizeof(assembly));
+	}
+
+	template <Reg R64, Op OP>
 	inline std::uintptr_t
-	write_lea(SKSE::Trampoline& a_trampoline, std::uintptr_t a_src, std::uintptr_t a_dst)
+	write_rm(SKSE::Trampoline& a_trampoline, std::uintptr_t a_src, std::uintptr_t a_dst)
 	{
 #pragma pack(push, 1)
 		struct SrcAssembly
 		{
 			// lea r64, [rip + disp]
 			REX rex;            // 0 - REX.W
-			Op opcode;          // 1 - LEA
+			Op opcode;          // 1
 			ModRM modrm;        // 2 - mod = 0b00, reg = r64, rm = 0b101
 			std::int32_t disp;  // 3
 		};
@@ -95,7 +126,7 @@ namespace util
 				.r = (to_underlying(R64) >> 3) & 0b1,
 				.w = 0b1,
 			},
-			.opcode = Op::LEA,
+			.opcode = OP,
 			.modrm = {
 				.rm = 0b101,
 				.reg = to_underlying(R64) & 0b111,
@@ -112,7 +143,10 @@ namespace util
 	inline std::uintptr_t
 	write_lea(SKSE::Trampoline& a_trampoline, std::uintptr_t a_src, F&& a_dst)
 	{
-		return write_lea<R64>(a_trampoline, a_src, unrestricted_cast<std::uintptr_t>(a_dst));
+		return write_rm<R64, Op::LEA>(
+			a_trampoline,
+			a_src,
+			unrestricted_cast<std::uintptr_t>(a_dst));
 	}
 }
 

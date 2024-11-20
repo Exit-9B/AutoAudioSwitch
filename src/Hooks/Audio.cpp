@@ -1,5 +1,6 @@
 #include "Audio.h"
 
+#include "AudioEx/Bink.h"
 #include "AudioEx/DeviceWatcher.h"
 #include "AudioEx/Engine.h"
 #include "AudioEx/EngineCallback.h"
@@ -11,9 +12,23 @@ namespace Hooks
 	void Audio::Install()
 	{
 		StartUpHook::Install();
+		BinkHook::Install();
 		XAudioHook::Install();
 		AudioInitHook::Install();
 		ProcessSoundUpdatesHook::Install();
+	}
+
+	void Audio::ProcessIXAudio2(RE::IXAudio2* a_xaudio)
+	{
+		static constinit std::once_flag flag;
+		std::call_once(
+			flag,
+			[a_xaudio]()
+			{
+				const auto vfptr = *reinterpret_cast<std::uintptr_t**>(a_xaudio);
+				const auto vftable = *vfptr;
+				MasteringVoiceHook::Install(vftable);
+			});
 	}
 
 	void Audio::StartUpHook::Install()
@@ -35,6 +50,16 @@ namespace Hooks
 		}
 	}
 
+	void Audio::BinkHook::Install()
+	{
+		if (!AudioEx::Bink::Init()) {
+			return;
+		}
+
+		auto hook = REL::Relocation<std::uintptr_t>(RE::Offset::MoviePlayer::Initialize, 0x4);
+		util::write_14branch(hook.address(), &AudioEx::Bink::SetSoundSystem);
+	}
+
 	void Audio::XAudioHook::Install()
 	{
 		auto hook = REL::Relocation<std::uintptr_t>(RE::Offset::BSXAudio2Audio::Init, 0xB7);
@@ -52,17 +77,7 @@ namespace Hooks
 		void* a_ppv)
 	{
 		const auto result = _originalFunc(a_rclsid, a_unkOuter, a_clsContext, a_riid, a_ppv);
-
-		static constinit std::once_flag flag;
-		std::call_once(
-			flag,
-			[a_ppv]()
-			{
-				const auto vfptr = *reinterpret_cast<std::uintptr_t**>(a_ppv);
-				const auto vftable = *vfptr;
-				MasteringVoiceHook::Install(vftable);
-			});
-
+		ProcessIXAudio2(static_cast<RE::IXAudio2*>(a_ppv));
 		return result;
 	}
 
@@ -152,6 +167,13 @@ namespace Hooks
 
 	void Audio::ProcessSoundUpdatesHook::Func(RE::BSAudioManager* a_audioManager)
 	{
+		const auto moviePlayer =
+			*REL::Relocation<RE::BGSMoviePlayer**>(STATIC_OFFSET(BGSMoviePlayer::Instance));
+
+		if (moviePlayer && moviePlayer->movie) {
+			return _originalFunc(a_audioManager);
+		}
+
 		if (SKSE::WinAPI::GetCurrentThreadID() == a_audioManager->ownerThreadID) {
 			if (AudioEx::Engine::retryAudio) {
 				AudioEx::Engine::Reset(a_audioManager);
@@ -166,8 +188,10 @@ namespace Hooks
 			}
 		}
 
-		if (!AudioEx::Engine::retryAudio) {
-			_originalFunc(a_audioManager);
+		if (AudioEx::Engine::retryAudio) {
+			return;
 		}
+
+		_originalFunc(a_audioManager);
 	}
 }

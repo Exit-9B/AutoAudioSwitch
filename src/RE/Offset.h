@@ -13,6 +13,11 @@ namespace RE
 			constexpr auto uiSmallRumbleMonitorID = REL::ID(380154);
 		}
 
+		namespace BGSMoviePlayer
+		{
+			constexpr auto Instance = REL::ID(412214);
+		}
+
 		namespace BSAudioManager
 		{
 			namespace AudioLoadTask
@@ -66,6 +71,11 @@ namespace RE
 		namespace Journal_SystemTab
 		{
 			constexpr auto ProcessCallbacks = REL::ID(53306);
+		}
+
+		namespace MoviePlayer
+		{
+			constexpr auto Initialize = REL::ID(90263);
 		}
 
 		constexpr auto WinMain = REL::ID(36544);

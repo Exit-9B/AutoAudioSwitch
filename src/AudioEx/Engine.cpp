@@ -1,5 +1,6 @@
 #include "Engine.h"
 
+#include "Bink.h"
 #include "EngineCallback.h"
 #include "RE/Offset.h"
 
@@ -228,6 +229,8 @@ namespace AudioEx
 			if (audioImpl->Init(&a_audioManager->initSettings.wnd)) {
 				audioImpl->XAudio->StartEngine();
 				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitialized);
+
+				Bink::SetSoundSystem();
 
 				ReviveAudioMonitors(audioImpl);
 

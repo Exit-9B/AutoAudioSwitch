@@ -16,12 +16,19 @@ namespace Hooks
 		static void Install();
 
 	private:
+		static void ProcessIXAudio2(RE::IXAudio2* a_xaudio);
+
 		struct StartUpHook
 		{
 			static void Install();
 			static void Func();
 
 			inline static REL::Relocation<decltype(&Func)> _originalFunc;
+		};
+
+		struct BinkHook
+		{
+			static void Install();
 		};
 
 		struct XAudioHook
