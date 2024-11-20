@@ -44,6 +44,8 @@ namespace AudioEx
 					xaudioGameSound->samplesPlayed =
 						static_cast<std::uint32_t>(voiceState.SamplesPlayed);
 
+					xaudioGameSound->sourceVoice->Stop();
+					xaudioGameSound->sourceVoice->FlushSourceBuffers();
 					std::exchange(xaudioGameSound->sourceVoice, nullptr)->DestroyVoice();
 				}
 
@@ -69,11 +71,12 @@ namespace AudioEx
 	static void
 	ReviveGameSound(RE::BSXAudio2Audio* a_audioImpl, RE::BSXAudio2GameSound* a_gameSound)
 	{
-		if (!a_gameSound->src) {
+		const auto src = a_gameSound->src;
+		if (!src) {
 			return;
 		}
 
-		const std::uint32_t srcChannels = a_gameSound->src->format.nChannels;
+		const std::uint32_t srcChannels = src->format.nChannels;
 		const std::uint32_t dstChannels = a_audioImpl->speakerChannels;
 
 		a_gameSound->dspSettings.SrcChannelCount = srcChannels;
@@ -87,7 +90,7 @@ namespace AudioEx
 
 		a_gameSound->sourceVoice = GetCompatableSourceVoice(
 			a_audioImpl,
-			std::addressof(a_gameSound->src->format),
+			std::addressof(src->format),
 			a_gameSound->requests,
 			a_gameSound,
 			a_gameSound->IsMusic());
@@ -95,7 +98,12 @@ namespace AudioEx
 		a_gameSound->OutputModelChangedImpl();
 		a_gameSound->SetVolumeImpl();
 
-		a_gameSound->playbackPosition += std::exchange(a_gameSound->samplesPlayed, 0);
+		if ((a_gameSound->soundType.underlying() & 0x3800) == 0) {
+			a_gameSound->playbackPosition += std::exchange(a_gameSound->samplesPlayed, 0);
+			if (src->format.wFormatTag == 358) {
+				a_gameSound->playbackPosition &= ~0x7F;
+			}
+		}
 
 		if (a_gameSound->IsPlaying()) {
 			a_gameSound->SeekInSamples(a_gameSound->playbackPosition);
