@@ -45,10 +45,11 @@ namespace AudioEx
 					xaudioGameSound->samplesPlayed =
 						static_cast<std::uint32_t>(voiceState.SamplesPlayed);
 
+					xaudioGameSound->sourceVoice->FlushSourceBuffers();
+					xaudioGameSound->buffersQueued = 0;
 					std::exchange(xaudioGameSound->sourceVoice, nullptr)->DestroyVoice();
 				}
 
-				xaudioGameSound->buffersQueued = 0;
 				xaudioGameSound->lastUpdateTime = std::numeric_limits<std::uint32_t>::max();
 			}
 		}
