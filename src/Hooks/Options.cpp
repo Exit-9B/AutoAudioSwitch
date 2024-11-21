@@ -9,6 +9,8 @@ namespace Hooks
 	// Magic number taken from GUID `DEVINTERFACE_AUDIO_RENDER`.
 	static constexpr std::uint32_t ID_OutputDevice = 0xE6327CAD;
 
+	static std::vector<RE::XAUDIO2_DEVICE_DETAILS> DeviceList;
+
 	void Options::Install()
 	{
 		AudioOptionsHook::Install();
@@ -54,10 +56,12 @@ namespace Hooks
 		std::uint32_t deviceCount{};
 		audioImpl->XAudio->GetDeviceCount(&deviceCount);
 
+		DeviceList.resize(deviceCount);
+
 		std::uint32_t currentDevice = 0;
 		for (const auto i : std::views::iota(0u, deviceCount)) {
-			RE::XAUDIO2_DEVICE_DETAILS details{};
-			audioImpl->XAudio->GetDeviceDetails(i, &details);
+			auto& details = DeviceList[i];
+			audioImpl->XAudio->GetDeviceDetails(i, std::addressof(details));
 			options.PushBack(
 				std::wstring_view(details.DisplayName, ::wcsnlen(details.DisplayName, 256)));
 
@@ -100,15 +104,11 @@ namespace Hooks
 				return;
 			}
 
-			std::uint32_t deviceCount{};
-			audioImpl->XAudio->GetDeviceCount(&deviceCount);
-
 			wchar_t deviceID[256]{};
 
 			if (value == 0) {
-				for (const auto i : std::views::iota(0u, deviceCount)) {
-					RE::XAUDIO2_DEVICE_DETAILS details{};
-					audioImpl->XAudio->GetDeviceDetails(i, &details);
+				for (const auto i : std::views::iota(0u, DeviceList.size())) {
+					const auto& details = DeviceList[i];
 
 					if (details.Role == RE::XAUDIO2_DEVICE_ROLE::DefaultGameDevice) {
 						std::ranges::copy(details.DeviceID, deviceID);
@@ -122,8 +122,7 @@ namespace Hooks
 				AudioEx::Prefs::SetPreferredDevice(std::nullopt);
 			}
 			else {
-				RE::XAUDIO2_DEVICE_DETAILS details{};
-				audioImpl->XAudio->GetDeviceDetails(value - 1, &details);
+				const auto& details = DeviceList[static_cast<std::size_t>(value) - 1];
 				std::ranges::copy(details.DeviceID, deviceID);
 
 				AudioEx::Prefs::SetPreferredDevice(
@@ -131,7 +130,6 @@ namespace Hooks
 			}
 
 			if (::wcsncmp(deviceID, AudioEx::Engine::CurrentDevice.DeviceID, 256) != 0) {
-
 				logger::info("Preferred audio device changed"sv);
 				AudioEx::Engine::retryAudio = true;
 			}
