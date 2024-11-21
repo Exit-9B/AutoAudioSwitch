@@ -68,12 +68,12 @@ namespace AudioEx
 		audioManager->ClearCache();
 	}
 
-	static void
+	static bool
 	ReviveGameSound(RE::BSXAudio2Audio* a_audioImpl, RE::BSXAudio2GameSound* a_gameSound)
 	{
 		const auto src = a_gameSound->src;
 		if (!src) {
-			return;
+			return false;
 		}
 
 		const std::uint32_t srcChannels = src->format.nChannels;
@@ -95,6 +95,10 @@ namespace AudioEx
 			a_gameSound,
 			a_gameSound->IsMusic());
 
+		if (!a_gameSound->sourceVoice) {
+			return false;
+		}
+
 		a_gameSound->OutputModelChangedImpl();
 		a_gameSound->SetVolumeImpl();
 
@@ -108,6 +112,8 @@ namespace AudioEx
 		if (a_gameSound->IsPlaying()) {
 			a_gameSound->SeekInSamples(a_gameSound->playbackPosition);
 		}
+
+		return true;
 	}
 
 	static void KillAudioMonitors()
@@ -219,27 +225,56 @@ namespace AudioEx
 
 		const auto audioImpl = RE::BSXAudio2GameSound::GetAudioImplementation();
 
-		if (audioImpl) {
-			SetSilentMode(audioImpl);
-			a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitialized);
-			a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitFailed);
+		if (!audioImpl) {
+			return;
+		}
 
-			logger::trace("Reinitializing XAudio2..."sv);
-			if (audioImpl->Init(&a_audioManager->initSettings.wnd)) {
-				audioImpl->XAudio->StartEngine();
-				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitialized);
+		if (audioImpl->XAudio) {
+			std::uint32_t deviceCount{};
+			audioImpl->XAudio->GetDeviceCount(std::addressof(deviceCount));
+			if (deviceCount == 0) {
+				return;
+			}
+		}
 
-				Bink::SetSoundSystem();
+		SetSilentMode(audioImpl);
+		a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitialized);
+		a_audioManager->flags.reset(RE::BSAudioManager::Flags::PlatformInitFailed);
 
-				ReviveAudioMonitors(audioImpl);
+		logger::trace("Reinitializing XAudio2..."sv);
+		if (audioImpl->Init(&a_audioManager->initSettings.wnd)) {
+			audioImpl->XAudio->StartEngine();
+			a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitialized);
 
-				for (auto& [soundID, gameSound] : a_audioManager->activeSounds) {
-					ReviveGameSound(audioImpl, static_cast<RE::BSXAudio2GameSound*>(gameSound));
+			Bink::SetSoundSystem();
+
+			ReviveAudioMonitors(audioImpl);
+
+			auto& activeSounds = a_audioManager->activeSounds;
+			for (auto it = activeSounds.begin(); it != activeSounds.end();) {
+				const auto& [soundID, gameSound] = *it;
+
+				if (ReviveGameSound(audioImpl, static_cast<RE::BSXAudio2GameSound*>(gameSound))) {
+					++it;
+				}
+				else {
+					audioImpl->ReleaseGameSound(gameSound);
+					it = activeSounds.erase(it);
 				}
 			}
-			else {
-				a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitFailed);
+		}
+		else {
+			a_audioManager->flags.set(RE::BSAudioManager::Flags::PlatformInitFailed);
+
+			for (const auto& [soundID, gameSound] : a_audioManager->activeSounds) {
+				delete gameSound;
 			}
+			a_audioManager->activeSounds.clear();
+
+			for (const auto& [soundID, soundInfo] : a_audioManager->stateMap) {
+				delete soundInfo;
+			}
+			a_audioManager->stateMap.clear();
 		}
 	}
 
@@ -256,9 +291,9 @@ namespace AudioEx
 
 		case WAIT::OBJECT_0:
 			criticalError = true;
-			if (const auto audio = RE::BSXAudio2GameSound::GetAudioImplementation()) {
-				SetSilentMode(audio);
-			}
+			// DirectXTK recommended stopping the engine here, but it seems harmless to keep it
+			// running, and keeping the interface allows us to query the live device count before
+			// attempting a reset.
 			return false;
 
 		case WAIT::FAILED:

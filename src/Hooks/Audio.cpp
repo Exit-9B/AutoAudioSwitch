@@ -100,7 +100,7 @@ namespace Hooks
 	{
 		std::uint32_t deviceCount{};
 		a_xaudio->GetDeviceCount(&deviceCount);
-		logger::debug("{} audio devices available"sv, deviceCount);
+		logger::info("{} audio devices available"sv, deviceCount);
 
 		if (AudioEx::Prefs::PreferredDevice) {
 			for (const auto i : std::views::iota(0u, deviceCount)) {
